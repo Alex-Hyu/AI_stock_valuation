@@ -72,6 +72,13 @@ def fetch_stock_data(ticker: str) -> dict:
             'ma50': ma50,
             'ma200': ma200,
             'company_name': info.get('longName') or info.get('shortName'),
+            # 多模型估值新增字段
+            'price_to_book': info.get('priceToBook'),
+            'ev_to_ebitda': info.get('enterpriseToEbitda'),
+            'enterprise_value': info.get('enterpriseValue'),
+            'operating_cashflow': info.get('operatingCashflow'),
+            'capex': info.get('capitalExpenditures'),
+            'beta': info.get('beta'),
         }
 
     except Exception as e:
@@ -102,6 +109,12 @@ def fetch_stock_data(ticker: str) -> dict:
                     'revenue_growth': None,
                     'ps_ratio': None,
                     'fcf_yield': None,
+                    'price_to_book': None,
+                    'ev_to_ebitda': None,
+                    'enterprise_value': None,
+                    'operating_cashflow': None,
+                    'capex': None,
+                    'beta': None,
                     'error': f"Yahoo失败,Stooq价格fallback",
                 }
         except Exception:

@@ -12,6 +12,7 @@ from datetime import datetime
 
 from data_fetcher import fetch_all_stocks, fetch_macro_indicators, fetch_price_history
 from scoring import build_scoring_table
+from valuation_models import run_all_models
 
 
 # ============ 页面配置 ============
@@ -89,6 +90,36 @@ with st.spinner("📡 从Yahoo Finance拉取数据中..."):
     stock_df = fetch_all_stocks(tickers)
     macro = fetch_macro_indicators()
     scores_df = build_scoring_table(stock_df, config)
+
+# 计算多模型估值结果(给所有股票)
+@st.cache_data(ttl=3600, show_spinner=False)
+def compute_multi_model_valuation(_stock_df, _config):
+    """对所有股票运行多模型估值"""
+    results = []
+    stocks_cfg = _config['stocks']
+    for _, row in _stock_df.iterrows():
+        ticker = row['ticker']
+        if ticker not in stocks_cfg:
+            continue
+        layer = stocks_cfg[ticker]['layer']
+        result = run_all_models(row.to_dict(), ticker, layer)
+        results.append({
+            'ticker': ticker,
+            'name': stocks_cfg[ticker]['name'],
+            'layer': layer,
+            'consensus_score': result['consensus_score'],
+            'signal_strength': result['signal_strength'],
+            'applicable_count': result['applicable_count'],
+            'cheap_count': result['cheap_count'],
+            'expensive_count': result['expensive_count'],
+            'models': result['models'],
+        })
+    return results
+
+multi_val_results = compute_multi_model_valuation(stock_df, config)
+multi_val_df = pd.DataFrame([{k: v for k, v in r.items() if k != 'models'}
+                              for r in multi_val_results])
+ticker_to_models = {r['ticker']: r['models'] for r in multi_val_results}
 
 
 # ============ 宏观风险仪表盘 ============
@@ -396,6 +427,128 @@ if selected_ticker:
 
         st.markdown(f"**核心优势**: {sel['strength']}")
         st.markdown(f"**核心风险**: {sel['risk']}")
+
+
+# ============ 多模型估值一致性分析 ============
+st.markdown("---")
+st.markdown("## 🎯 多模型估值一致性分析")
+st.caption(
+    "对每只股票同时跑多个估值模型(Forward PE, Reverse DCF, P/B调整, EV/EBITDA, Rule of 40, AFFO Yield),"
+    "看几个独立模型给出一致信号。多模型一致比单一指标可靠得多。"
+)
+
+# ===== 多模型一致性表 =====
+if not multi_val_df.empty:
+    multi_val_sorted = multi_val_df.sort_values('consensus_score', ascending=False, na_position='last').copy()
+
+    # 为分析做格式化
+    display_mv = multi_val_sorted.copy()
+    display_mv['估值一致性'] = display_mv.apply(
+        lambda r: f"{r['cheap_count']}便宜/{r['expensive_count']}贵 (共{r['applicable_count']}模型)"
+        if r['applicable_count'] > 0 else "无法估值",
+        axis=1
+    )
+
+    display_mv = display_mv[['ticker', 'name', 'layer', 'consensus_score', 'signal_strength', '估值一致性']]
+    display_mv.columns = ['Ticker', '公司名', '层', '估值综合分', '信号', '一致性详情']
+
+    # 格式化数字
+    display_mv['估值综合分'] = display_mv['估值综合分'].apply(
+        lambda x: f"{x:.2f}/10" if pd.notna(x) else "N/A"
+    )
+
+    st.dataframe(display_mv, use_container_width=True, hide_index=True, height=400)
+
+    # 信号统计
+    signal_counts = multi_val_df['signal_strength'].value_counts()
+    st.markdown("### 信号分布")
+    sig_col1, sig_col2, sig_col3, sig_col4, sig_col5 = st.columns(5)
+
+    for col, sig in zip(
+        [sig_col1, sig_col2, sig_col3, sig_col4, sig_col5],
+        ['🟢 强买入', '🟢 买入', '⚪ 中性', '🟡 偏贵', '🔴 避开']
+    ):
+        col.metric(sig, f"{signal_counts.get(sig, 0)}")
+
+    # ===== 单股多模型详情 =====
+    st.markdown("### 🔬 单股多模型详细分析")
+    selected_mv_ticker = st.selectbox(
+        "选择股票查看每个模型的详细输出",
+        options=multi_val_df['ticker'].tolist(),
+        index=0,
+        key='multi_val_ticker',
+    )
+
+    if selected_mv_ticker:
+        models = ticker_to_models.get(selected_mv_ticker, {})
+        sel_row = multi_val_df[multi_val_df['ticker'] == selected_mv_ticker].iloc[0]
+
+        col_mv1, col_mv2, col_mv3 = st.columns(3)
+        col_mv1.metric("估值综合分", f"{sel_row['consensus_score']:.2f}/10"
+                        if pd.notna(sel_row['consensus_score']) else "N/A")
+        col_mv2.metric("信号强度", sel_row['signal_strength'])
+        col_mv3.metric("适用模型数", f"{sel_row['applicable_count']}")
+
+        # 每个模型的详细输出
+        models_data = []
+        for model_name, m in models.items():
+            score = m.get('score')
+            value = m.get('value')
+            verdict = m.get('verdict', '')
+            note = m.get('note', '')
+
+            if value is None:
+                value_str = 'N/A'
+            elif isinstance(value, float):
+                value_str = f"{value*100:.1f}%" if abs(value) < 1 else f"{value:.2f}"
+            else:
+                value_str = str(value)
+
+            models_data.append({
+                '估值模型': model_name,
+                '打分': f"{score:.1f}/10" if score is not None else "N/A",
+                '判断': verdict,
+                '指标值': value_str,
+                '说明': note,
+            })
+
+        st.dataframe(pd.DataFrame(models_data), hide_index=True, use_container_width=True)
+
+        # 多模型分数雷达图
+        valid_models = [(name, m['score']) for name, m in models.items()
+                        if m.get('score') is not None]
+        if len(valid_models) >= 3:
+            radar_df = pd.DataFrame(valid_models, columns=['模型', '分数'])
+            fig_mv_radar = go.Figure(data=go.Scatterpolar(
+                r=radar_df['分数'].tolist() + [radar_df['分数'].iloc[0]],
+                theta=radar_df['模型'].tolist() + [radar_df['模型'].iloc[0]],
+                fill='toself',
+                name=selected_mv_ticker,
+                line=dict(color='#1F4E78'),
+            ))
+            fig_mv_radar.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 10])),
+                showlegend=False,
+                height=400,
+                title=f"{selected_mv_ticker}: 多模型估值打分雷达图",
+            )
+            st.plotly_chart(fig_mv_radar, use_container_width=True)
+
+        # 模型解释
+        with st.expander("📚 5个估值模型说明"):
+            st.markdown("""
+            **Forward PE** — 最快速度判断估值。<12极便宜,>50泡沫。**对周期股可能误导**(MU这种FY峰值PE低)。
+
+            **Reverse DCF** — 反向DCF,从当前股价反推市场隐含的未来10年FCF增长率。<10%便宜(容易达到),>30%贵(几乎不可能持续)。**所有有FCF的公司都适用**,最理论严谨的估值方法。
+
+            **P/B (ROE-adjusted)** — 看市净率与ROE的比值,而非纯P/B。高ROE辩护高P/B。**对资产密集/周期股最有效**。
+
+            **EV/EBITDA** — 跨周期比PE稳定,衡量企业价值/经营性现金流。<8极便宜,>25贵。
+
+            **Rule of 40** — 营收增速+经营利润率,>40为健康成长。**适用类SaaS高成长**(ANET等)。
+
+            **AFFO Yield** — REITs专用,因为REITs的折旧不真实,PE无意义。AFFO Yield>5%便宜。
+            """)
 
 
 # ============ 页脚 ============
