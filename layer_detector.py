@@ -117,8 +117,13 @@ INDUSTRY_RULES = [
 def detect_layer(ticker: str) -> dict:
     """
     自动判定股票的产业链层级
-    返回: {layer, confidence, reason, industry, sector, name, suggested_layers}
+    返回: {layer, confidence, reason, industry, sector, name, suggested_layers, archetype}
+    
+    layer取值: L1-L8 (AI产业链), 或 'NotAI' (非AI产业链股)
+    archetype: 商业模式分类(QualityGrowth, Cyclical, REIT等),决定估值模型
     """
+    from business_archetype import detect_archetype
+
     ticker = ticker.upper().strip()
     result = {
         'ticker': ticker,
@@ -128,7 +133,9 @@ def detect_layer(ticker: str) -> dict:
         'industry': None,
         'sector': None,
         'name': None,
-        'suggested_layers': [],  # 备选,如果用户觉得自动判定不对
+        'suggested_layers': [],
+        'archetype': None,
+        'archetype_confidence': 'low',
     }
 
     # === Step 1: 已知ticker精确匹配 ===
@@ -136,25 +143,32 @@ def detect_layer(ticker: str) -> dict:
         result['layer'] = KNOWN_TICKERS[ticker]
         result['confidence'] = 'high'
         result['reason'] = '已知股票池精确匹配'
+        # archetype同时识别
+        arch = detect_archetype(ticker)
+        result['archetype'] = arch['archetype']
+        result['archetype_confidence'] = arch['confidence']
         return result
 
-    # === Step 2: Yahoo industry/sector匹配 ===
+    # === Step 2: Yahoo industry匹配 ===
+    info = None
     try:
         info = yf.Ticker(ticker).info
         if not info or len(info) < 2:
-            result['reason'] = 'Yahoo数据不可用,需要手动指定layer'
-            return result
+            info = None
+    except Exception as e:
+        result['reason'] = f'Yahoo获取失败: {str(e)[:80]}'
+
+    if info:
+        result['industry'] = info.get('industry')
+        result['sector'] = info.get('sector')
+        result['name'] = info.get('longName') or info.get('shortName')
 
         industry = (info.get('industry') or '').lower()
         sector = (info.get('sector') or '').lower()
         name = (info.get('longName') or info.get('shortName') or '').lower()
         long_summary = (info.get('longBusinessSummary') or '').lower()
 
-        result['industry'] = info.get('industry')
-        result['sector'] = info.get('sector')
-        result['name'] = info.get('longName') or info.get('shortName')
-
-        # 应用规则,收集所有匹配
+        # AI层级匹配
         matches = []
         for rule in INDUSTRY_RULES:
             ind_match = (not rule.get('industry') or
@@ -170,56 +184,91 @@ def detect_layer(ticker: str) -> dict:
                 matches.append({
                     'layer': rule['layer'],
                     'confidence': rule['confidence'],
-                    'rule': rule,
                 })
 
         if matches:
-            # 取信心最高的(高>中>低)
             conf_order = {'high': 3, 'medium': 2, 'low': 1}
             matches.sort(key=lambda m: -conf_order[m['confidence']])
             best = matches[0]
             result['layer'] = best['layer']
             result['confidence'] = best['confidence']
             result['reason'] = (f"Industry='{info.get('industry')}', "
-                                 f"Sector='{info.get('sector')}', "
                                  f"匹配规则: {best['confidence']}信心")
-            # 备选layer
             result['suggested_layers'] = list(set(m['layer'] for m in matches))
         else:
-            result['reason'] = (f"无规则匹配 - Industry='{info.get('industry')}', "
-                                 f"Sector='{info.get('sector')}',需手动指定")
+            # 不属于AI产业链 → 标记为NotAI而不是None
+            result['layer'] = 'NotAI'
+            result['confidence'] = 'high'
+            result['reason'] = (f"Industry='{info.get('industry')}', "
+                                f"Sector='{info.get('sector')}' - 非AI产业链股票")
 
-    except Exception as e:
-        result['reason'] = f'Yahoo获取失败: {str(e)[:80]} - 需手动指定layer'
+        # archetype识别
+        arch = detect_archetype(ticker, info)
+        result['archetype'] = arch['archetype']
+        result['archetype_confidence'] = arch['confidence']
+
+    else:
+        # Yahoo彻底失败,返回兜底
+        result['layer'] = None  # 仍然让用户手动选
+        result['archetype'] = 'Generic'
+        result['archetype_confidence'] = 'low'
+        if not result['reason']:
+            result['reason'] = 'Yahoo数据不可用,需要手动指定'
 
     return result
 
 
 # ============ 适用估值模型自动判断 ============
-def get_applicable_models(layer: str, ticker: str = '') -> dict:
+def get_applicable_models(layer: str = None, ticker: str = '', archetype: str = None) -> dict:
     """
-    根据layer返回适用的估值模型清单
-    与valuation_models.py保持一致
+    返回适用的估值模型清单
+    优先用archetype,若没有则从layer兜底
     """
-    from valuation_models import LAYER_MODEL_APPLICABILITY, REIT_TICKERS
+    from business_archetype import get_models_for_archetype, KNOWN_ARCHETYPES, detect_archetype
 
-    applicability = LAYER_MODEL_APPLICABILITY.get(layer, {})
+    # 决定archetype
+    if archetype is None:
+        if ticker.upper() in KNOWN_ARCHETYPES:
+            archetype = KNOWN_ARCHETYPES[ticker.upper()]
+        elif layer:
+            # 从layer推断
+            layer_to_archetype = {
+                'L1': 'Cyclical', 'L2': 'Foundry', 'L3': 'QualityGrowth',
+                'L4': 'Cyclical', 'L5': 'HardwareCapital', 'L6': 'QualityGrowth',
+                'L7': 'Utility', 'L8': 'QualityGrowth',
+                'NotAI': 'Generic',
+            }
+            archetype = layer_to_archetype.get(layer, 'Generic')
+        else:
+            archetype = 'Generic'
 
-    # REIT特殊处理
-    is_reit = ticker.upper() in REIT_TICKERS
+    config = get_models_for_archetype(archetype)
 
-    models = {
-        'Forward PE': {'applies': applicability.get('pe') and not is_reit,
-                       'note': '周期股可能误导' if applicability.get('pe') == 'warn' else None},
-        'Reverse DCF': {'applies': bool(applicability.get('rdcf')),
-                        'note': '需要稳定的FCF' if not applicability.get('rdcf') else None},
-        'P/B (ROE-adjusted)': {'applies': bool(applicability.get('pb')),
-                                'note': '主要用于资产密集/周期股'},
-        'EV/EBITDA': {'applies': bool(applicability.get('evebitda')),
-                      'note': '跨周期最稳定的指标'},
-        'Rule of 40': {'applies': applicability.get('rule40_affo') and not is_reit,
-                       'note': '高成长SaaS/类SaaS适用'},
-        'AFFO Yield': {'applies': is_reit,
-                       'note': 'REIT专用估值'},
+    # 转换成UI友好格式
+    name_map = {
+        'forward_pe': 'Forward PE',
+        'reverse_dcf': 'Reverse DCF',
+        'pb_roe': 'P/B (ROE-adj)',
+        'ev_ebitda': 'EV/EBITDA',
+        'rule_of_40': 'Rule of 40',
+        'ev_sales': 'EV/Sales',
+        'affo_yield': 'AFFO Yield',
+        'p_nav': 'P/NAV',
+        'dividend_yield': 'Dividend Yield',
+        'btc_premium': 'BTC Premium',
+        'normalized_pe': 'Normalized PE',
+        'roa_roe': 'ROA/ROE',
+        'pipeline_npv': 'Pipeline NPV',
+        'trading_volume_take_rate': 'Volume×TakeRate',
     }
+
+    models = {}
+    for key, val in config.items():
+        if key == 'description':
+            continue
+        display_name = name_map.get(key, key)
+        models[display_name] = {
+            'applies': bool(val),
+            'note': '此商业模式可能失真' if val == 'warn' else None,
+        }
     return models

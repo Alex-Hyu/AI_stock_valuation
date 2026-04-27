@@ -313,50 +313,144 @@ def score_affo_yield(row, ticker: str = '') -> dict:
             'note': f'AFFO Yield ≈ {affo_yield*100:.1f}% (近似估算)'}
 
 
-# ============ 主入口: 多模型综合估值 ============
-def run_all_models(row, ticker: str, layer: str) -> dict:
+# ============ 模型6: EV/Sales (SaaS/亏损股) ============
+def score_ev_sales(row, ticker: str = '') -> dict:
     """
-    对一只股票跑所有适用模型,返回综合估值结果
+    EV/Sales 适用于SaaS和亏损成长股,因为没盈利PE无意义
+    """
+    ps = _safe_get(row, 'ps_ratio')  # 用P/S近似EV/S
+    if ps is None or ps <= 0:
+        return {'score': None, 'value': None, 'verdict': 'N/A', 'note': '数据缺失'}
+
+    if ps < 3:
+        score, verdict = 9.0, '极便宜'
+    elif ps < 6:
+        score, verdict = 7.0, '便宜'
+    elif ps < 10:
+        score, verdict = 5.5, '合理'
+    elif ps < 15:
+        score, verdict = 3.5, '偏贵'
+    elif ps < 25:
+        score, verdict = 2.0, '贵'
+    else:
+        score, verdict = 1.0, '泡沫区间'
+
+    return {'score': score, 'value': ps, 'verdict': verdict,
+            'note': f'P/S(近似EV/S)={ps:.1f}x'}
+
+
+# ============ 模型7: 股息收益率 (Utility/Consumer) ============
+def score_dividend_yield(row, ticker: str = '') -> dict:
+    """
+    股息收益率,适用稳定分红的公用事业/消费品
+    """
+    div_yield = _safe_get(row, 'dividend_yield')
+    if div_yield is None or div_yield < 0:
+        return {'score': None, 'value': None, 'verdict': 'N/A', 'note': '不分红或数据缺失'}
+
+    if div_yield > 0.06:
+        score, verdict = 9.0, '高分红'
+    elif div_yield > 0.04:
+        score, verdict = 7.5, '吸引'
+    elif div_yield > 0.025:
+        score, verdict = 6.0, '合理'
+    elif div_yield > 0.015:
+        score, verdict = 4.5, '一般'
+    elif div_yield > 0.005:
+        score, verdict = 3.0, '偏低'
+    else:
+        score, verdict = 2.0, '极低/无意义'
+
+    return {'score': score, 'value': div_yield, 'verdict': verdict,
+            'note': f'股息率={div_yield*100:.2f}%'}
+
+
+# ============ 模型8: BTC Premium (BTCProxy专用,如MSTR) ============
+def score_btc_premium(row, ticker: str = '') -> dict:
+    """
+    BTC代理股专用估值: 看股价相对BTC净持仓的溢价
+    需要外部数据(BTC持仓数+BTC价格),Yahoo没有
+    本函数返回提示性结果,实际数值需要手动维护
+    """
+    return {
+        'score': None,
+        'value': None,
+        'verdict': 'N/A',
+        'note': '需要手动输入BTC持仓和BTC价格(saylortracker.com),Yahoo无此数据',
+    }
+
+
+# ============ 主入口 (重构,基于archetype而不是layer) ============
+def run_all_models(row, ticker: str, layer: str = None, archetype: str = None) -> dict:
+    """
+    对一只股票跑所有适用模型(基于archetype),返回综合估值结果
+    
+    参数:
+        row: 股票数据(dict或Series)
+        ticker: 股票代码
+        layer: AI产业链层级(L1-L8 或 NotAI)用于portfolio分散,不影响估值模型选择
+        archetype: 商业模式分类,决定用哪些估值模型
+                   如果不传,会从business_archetype.py推断
+    
     返回:
         models: 每个模型的详细结果
-        consensus_score: 0-10综合一致性分数(适用模型的平均)
-        signal_strength: "强买入" / "买入" / "中性" / "避开" / "强避开"
+        consensus_score: 0-10综合一致性分数
+        signal_strength: 信号强度
         applicable_count: 实际可计算的模型数
-        cheap_count: 说"便宜"的模型数(score>=7)
+        cheap_count/expensive_count: 说便宜/贵的模型数
+        archetype: 实际使用的商业模式
     """
-    applicability = LAYER_MODEL_APPLICABILITY.get(layer, {})
+    # 决定archetype
+    if archetype is None:
+        # 兜底: 从layer推断
+        layer_to_archetype = {
+            'L1': 'Cyclical', 'L2': 'Foundry', 'L3': 'QualityGrowth',
+            'L4': 'Cyclical', 'L5': 'HardwareCapital', 'L6': 'QualityGrowth',
+            'L7': 'Utility', 'L8': 'QualityGrowth',
+        }
+        archetype = layer_to_archetype.get(layer, 'Generic')
+
+    # REIT 强制覆盖(EQIX/DLR等)
+    from business_archetype import KNOWN_ARCHETYPES, get_models_for_archetype
+    if ticker.upper() in KNOWN_ARCHETYPES:
+        archetype = KNOWN_ARCHETYPES[ticker.upper()]
+
+    model_config = get_models_for_archetype(archetype)
     models = {}
 
-    # 1. Forward PE
-    if applicability.get('pe'):
+    # 各模型按archetype配置决定是否运行
+    if model_config.get('forward_pe'):
         result = score_forward_pe(row, ticker)
-        result['applicable'] = applicability['pe']
-        if applicability['pe'] == 'warn':
-            result['note'] += ' (周期股慎用)'
+        if model_config['forward_pe'] == 'warn':
+            result['note'] += ' (此商业模式PE可能失真)'
         models['Forward PE'] = result
 
-    # REITs用AFFO代替PE
-    if ticker in REIT_TICKERS:
-        models.pop('Forward PE', None)
-        result = score_affo_yield(row, ticker)
-        result['applicable'] = True
-        models['AFFO Yield (REIT)'] = result
+    if model_config.get('reverse_dcf'):
+        models['Reverse DCF'] = reverse_dcf(row, ticker)
 
-    # 2. Reverse DCF
-    if applicability.get('rdcf'):
-        models['Reverse DCF'] = {**reverse_dcf(row, ticker), 'applicable': True}
+    if model_config.get('pb_roe'):
+        models['P/B (ROE-adj)'] = score_pb(row, ticker)
 
-    # 3. P/B
-    if applicability.get('pb'):
-        models['P/B'] = {**score_pb(row, ticker), 'applicable': True}
+    if model_config.get('ev_ebitda'):
+        result = score_ev_ebitda(row, ticker)
+        if model_config['ev_ebitda'] == 'warn':
+            result['note'] += ' (此商业模式EBITDA可能失真)'
+        models['EV/EBITDA'] = result
 
-    # 4. EV/EBITDA
-    if applicability.get('evebitda'):
-        models['EV/EBITDA'] = {**score_ev_ebitda(row, ticker), 'applicable': True}
+    if model_config.get('rule_of_40'):
+        models['Rule of 40'] = score_rule_of_40(row, ticker)
 
-    # 5. Rule of 40 (非REIT)
-    if applicability.get('rule40_affo') and ticker not in REIT_TICKERS:
-        models['Rule of 40'] = {**score_rule_of_40(row, ticker), 'applicable': True}
+    if model_config.get('ev_sales'):
+        models['EV/Sales'] = score_ev_sales(row, ticker)
+
+    if model_config.get('affo_yield'):
+        models['AFFO Yield'] = score_affo_yield(row, ticker)
+
+    if model_config.get('dividend_yield'):
+        models['Dividend Yield'] = score_dividend_yield(row, ticker)
+
+    if model_config.get('btc_premium'):
+        models['BTC Premium'] = score_btc_premium(row, ticker)
 
     # ===== 综合一致性分数 =====
     valid_scores = [m['score'] for m in models.values() if m.get('score') is not None]
@@ -370,6 +464,8 @@ def run_all_models(row, ticker: str, layer: str) -> dict:
             'applicable_count': 0,
             'cheap_count': 0,
             'expensive_count': 0,
+            'archetype': archetype,
+            'archetype_description': model_config.get('description', ''),
         }
 
     consensus_score = sum(valid_scores) / len(valid_scores)
@@ -396,4 +492,6 @@ def run_all_models(row, ticker: str, layer: str) -> dict:
         'applicable_count': applicable_count,
         'cheap_count': cheap_count,
         'expensive_count': expensive_count,
+        'archetype': archetype,
+        'archetype_description': model_config.get('description', ''),
     }

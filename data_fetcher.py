@@ -127,6 +127,7 @@ def fetch_stock_data(ticker: str) -> dict:
             'beta': info.get('beta'),
             'book_value_per_share': info.get('bookValue'),
             'ebitda': info.get('ebitda'),
+            'dividend_yield': info.get('dividendYield'),
         }
 
     except Exception as e:
@@ -167,6 +168,7 @@ def fetch_stock_data(ticker: str) -> dict:
                     'beta': None,
                     'book_value_per_share': None,
                     'ebitda': None,
+                    'dividend_yield': None,
                     'error': f"Yahoo失败,Stooq价格fallback (基本面数据不可用)",
                 }
         except Exception:

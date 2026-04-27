@@ -128,14 +128,15 @@ with st.expander(f"📋 股票池管理 (当前 {len(config['stocks'])} 只 — 
             d = st.session_state['detection_result']
 
             if d['layer'] is None:
-                st.error(f"❌ 无法自动识别layer: {d['reason']}")
+                st.error(f"❌ 无法获取数据: {d['reason']}")
                 manual_choice = st.selectbox(
                     "请手动选择产业链层级",
-                    options=['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8'],
+                    options=['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'NotAI'],
                     format_func=lambda x: {
                         'L1': 'L1 上游设备', 'L2': 'L2 代工', 'L3': 'L3 芯片设计',
                         'L4': 'L4 内存/封装/光通信', 'L5': 'L5 服务器/网络',
-                        'L6': 'L6 物理层(电力/REIT)', 'L7': 'L7 能源', 'L8': 'L8 超大规模云'
+                        'L6': 'L6 物理层(电力/REIT)', 'L7': 'L7 能源', 'L8': 'L8 超大规模云',
+                        'NotAI': 'NotAI 非AI产业链股票'
                     }.get(x, x),
                     key='manual_layer',
                 )
@@ -143,41 +144,70 @@ with st.expander(f"📋 股票池管理 (当前 {len(config['stocks'])} 只 — 
                 d['confidence'] = 'manual'
                 final_layer = manual_choice
             else:
-                # 显示识别结果
-                col_d1, col_d2, col_d3 = st.columns(3)
+                # 显示识别结果 - AI产业链 + 商业模式两个轴
+                col_d1, col_d2, col_d3, col_d4 = st.columns(4)
                 conf_emoji = {'high': '🟢', 'medium': '🟡', 'low': '🔴', 'manual': '✋'}
+
+                layer_label = d['layer']
+                if layer_label == 'NotAI':
+                    layer_label = 'NotAI 非AI股'
+
                 col_d1.metric(
-                    f"自动识别层级",
-                    d['layer'],
-                    f"{conf_emoji.get(d['confidence'], '')} {d['confidence']}信心"
+                    "AI产业链层级",
+                    layer_label,
+                    f"{conf_emoji.get(d['confidence'], '')} {d['confidence']}"
                 )
-                col_d2.metric("公司名", d.get('name') or 'N/A')
-                col_d3.metric("Yahoo Industry", d.get('industry') or 'N/A')
+                col_d2.metric(
+                    "商业模式",
+                    d.get('archetype') or 'Generic',
+                    f"{conf_emoji.get(d.get('archetype_confidence', 'low'), '')} "
+                    f"{d.get('archetype_confidence', 'low')}"
+                )
+                col_d3.metric("公司名", d.get('name') or 'N/A')
+                col_d4.metric("Yahoo Industry", d.get('industry') or 'N/A')
 
-                if d['confidence'] != 'high':
-                    st.warning(f"识别原因: {d['reason']}")
+                if d['confidence'] != 'high' or d.get('archetype_confidence') != 'high':
+                    st.info(f"💡 识别原因: {d['reason']}")
 
-                # 允许覆盖
-                layer_options = ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8']
+                # 允许覆盖layer
+                layer_options = ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8', 'NotAI']
                 idx = layer_options.index(d['layer']) if d['layer'] in layer_options else 0
                 final_layer = st.selectbox(
-                    "确认/调整层级 (如果识别不准,在这里改)",
+                    "确认/调整AI产业链层级 (NotAI = 不属于AI产业链)",
                     options=layer_options,
                     index=idx,
                     format_func=lambda x: {
                         'L1': 'L1 上游设备', 'L2': 'L2 代工', 'L3': 'L3 芯片设计',
                         'L4': 'L4 内存/封装/光通信', 'L5': 'L5 服务器/网络',
-                        'L6': 'L6 物理层', 'L7': 'L7 能源', 'L8': 'L8 超大规模云'
+                        'L6': 'L6 物理层', 'L7': 'L7 能源', 'L8': 'L8 超大规模云',
+                        'NotAI': 'NotAI 非AI产业链'
                     }.get(x, x),
                     key='final_layer',
                 )
 
-            # 显示该layer的适用估值模型
-            applicable_models = get_applicable_models(final_layer, d['ticker'])
-            st.markdown("**该layer适用的估值模型:**")
-            mc = st.columns(6)
+                # 允许覆盖archetype
+                from business_archetype import ARCHETYPE_MODELS, get_archetype_description
+                arch_options = list(ARCHETYPE_MODELS.keys())
+                arch_idx = arch_options.index(d.get('archetype')) if d.get('archetype') in arch_options else len(arch_options)-1
+                final_archetype = st.selectbox(
+                    "确认/调整商业模式 (这决定用哪些估值模型)",
+                    options=arch_options,
+                    index=arch_idx,
+                    key='final_archetype',
+                    help='REIT看AFFO; SaaS看Rule of 40+EV/Sales; Cyclical看P/B; BTCProxy只看NAV',
+                )
+                st.caption(f"💡 {get_archetype_description(final_archetype)}")
+
+            # 显示该archetype适用的估值模型
+            applicable_models = get_applicable_models(
+                layer=final_layer,
+                ticker=d['ticker'],
+                archetype=final_archetype if 'final_archetype' in st.session_state else None
+            )
+            st.markdown("**该商业模式适用的估值模型:**")
+            mc = st.columns(min(6, len(applicable_models)))
             for i, (mname, m) in enumerate(applicable_models.items()):
-                col = mc[i % 6]
+                col = mc[i % len(mc)]
                 if m['applies']:
                     col.success(f"✓ {mname}")
                 else:
@@ -216,9 +246,12 @@ with st.expander(f"📋 股票池管理 (当前 {len(config['stocks'])} 只 — 
 
             # 确认添加
             if st.button("✅ 确认添加到股票池", type="primary", use_container_width=True):
+                # 取最终的archetype值
+                final_arch = st.session_state.get('final_archetype', d.get('archetype', 'Generic'))
                 st.session_state.custom_stocks[d['ticker']] = {
                     'name': company_name or d['ticker'],
                     'layer': final_layer,
+                    'archetype': final_arch,
                     'ai_exposure': ai_exp,
                     'moat': moat_in,
                     'capex_risk': risk_in,
@@ -231,7 +264,8 @@ with st.expander(f"📋 股票池管理 (当前 {len(config['stocks'])} 只 — 
                 del st.session_state['detection_result']
                 # 清除Yahoo数据缓存(让新股票被拉取)
                 st.cache_data.clear()
-                st.success(f"✅ 已添加 {d['ticker']} 到股票池(层级={final_layer})")
+                st.success(f"✅ 已添加 {d['ticker']} 到股票池 "
+                           f"(层级={final_layer}, 商业模式={final_arch})")
                 st.rerun()
 
     # ===== 删除股票 =====
@@ -303,18 +337,24 @@ with st.spinner("📡 从Yahoo Finance拉取数据中..."):
 @st.cache_data(ttl=3600, show_spinner=False)
 def compute_multi_model_valuation(_stock_df, _config):
     """对所有股票运行多模型估值"""
+    from business_archetype import KNOWN_ARCHETYPES
     results = []
     stocks_cfg = _config['stocks']
     for _, row in _stock_df.iterrows():
         ticker = row['ticker']
         if ticker not in stocks_cfg:
             continue
-        layer = stocks_cfg[ticker]['layer']
-        result = run_all_models(row.to_dict(), ticker, layer)
+        cfg = stocks_cfg[ticker]
+        layer = cfg['layer']
+        # archetype: 优先用config里手动设置的,否则查已知库,最后兜底
+        archetype = cfg.get('archetype') or KNOWN_ARCHETYPES.get(ticker, None)
+
+        result = run_all_models(row.to_dict(), ticker, layer=layer, archetype=archetype)
         results.append({
             'ticker': ticker,
-            'name': stocks_cfg[ticker]['name'],
+            'name': cfg['name'],
             'layer': layer,
+            'archetype': result.get('archetype', 'Generic'),
             'consensus_score': result['consensus_score'],
             'signal_strength': result['signal_strength'],
             'applicable_count': result['applicable_count'],
@@ -703,8 +743,9 @@ if not multi_val_df.empty:
         axis=1
     )
 
-    display_mv = display_mv[['ticker', 'name', 'layer', 'consensus_score', 'signal_strength', '估值一致性']]
-    display_mv.columns = ['Ticker', '公司名', '层', '估值综合分', '信号', '一致性详情']
+    display_mv = display_mv[['ticker', 'name', 'layer', 'archetype', 'consensus_score',
+                              'signal_strength', '估值一致性']]
+    display_mv.columns = ['Ticker', '公司名', 'AI层级', '商业模式', '估值综合分', '信号', '一致性详情']
 
     # 格式化数字
     display_mv['估值综合分'] = display_mv['估值综合分'].apply(
