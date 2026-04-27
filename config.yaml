@@ -1,7 +1,6 @@
-# AI Data Center Portfolio + 明星股 v6 配置文件
-# ==============================================
-# 共58只股票+5个ETF基准,每只都预打archetype(决定估值模型)
-# 编辑此文件后push到GitHub,Streamlit Cloud自动重新部署
+# AI Data Center Portfolio 配置文件
+# 你可以编辑这个文件来调整股票池、权重和评分规则
+# 修改后push到GitHub,Streamlit Cloud会自动重新部署
 
 # ============ 六维度权重(必须加起来=1.0) ============
 weights:
@@ -12,12 +11,16 @@ weights:
   capex_risk: 0.15
   growth: 0.15
 
+# ============ 打分规则说明 ============
+# ai_exposure/moat/capex_risk/growth: 1-10分,人工定性打分,每季度review
+# financial_quality/valuation: 自动从Yahoo Finance计算得出
+# target_weight: 目标仓位权重(合计<1.0,留现金对冲仓)
+
 stocks:
-  # === AI L1 上游设备 ===
+  # ========== L1 上游设备 ==========
   ASML:
     name: "ASML Holding"
     layer: "L1"
-    archetype: "QualityGrowth"
     ai_exposure: 9
     moat: 10
     capex_risk: 6
@@ -25,21 +28,21 @@ stocks:
     target_weight: 0.06
     strength: "EUV/High-NA垄断"
     risk: "中国客户地缘风险"
+
   AMAT:
     name: "Applied Materials"
     layer: "L1"
-    archetype: "Cyclical"
     ai_exposure: 8
     moat: 8
     capex_risk: 6
     growth: 7
     target_weight: 0.00
-    strength: "沉积/刻蚀全线"
+    strength: "沉积/刻蚀/量检测全线"
     risk: "工艺转型爬坡"
+
   LRCX:
     name: "Lam Research"
     layer: "L1"
-    archetype: "Cyclical"
     ai_exposure: 8
     moat: 8
     capex_risk: 6
@@ -47,10 +50,10 @@ stocks:
     target_weight: 0.00
     strength: "HBM刻蚀龙头"
     risk: "存储周期波动"
+
   KLAC:
     name: "KLA Corp"
     layer: "L1"
-    archetype: "Cyclical"
     ai_exposure: 7
     moat: 9
     capex_risk: 6
@@ -59,35 +62,33 @@ stocks:
     strength: "量检测近乎垄断"
     risk: "估值溢价"
 
-  # === AI L2 代工 ===
+  # ========== L2 代工 ==========
   TSM:
     name: "Taiwan Semi"
     layer: "L2"
-    archetype: "Foundry"
     ai_exposure: 10
     moat: 10
     capex_risk: 7
     growth: 9
     target_weight: 0.12
     strength: "先进制程+CoWoS双垄断"
-    risk: "台海地缘"
+    risk: "台海地缘政治"
 
-  # === AI L3 芯片设计 ===
+  # ========== L3 芯片设计 ==========
   NVDA:
     name: "NVIDIA"
     layer: "L3"
-    archetype: "QualityGrowth"
     ai_exposure: 10
     moat: 10
     capex_risk: 4
     growth: 10
     target_weight: 0.11
-    strength: "AI训推+CUDA"
-    risk: "前4客户占60%营收"
+    strength: "AI训推霸主+CUDA生态"
+    risk: "前4大客户占60%营收"
+
   AVGO:
     name: "Broadcom"
     layer: "L3"
-    archetype: "QualityGrowth"
     ai_exposure: 9
     moat: 9
     capex_risk: 6
@@ -95,56 +96,33 @@ stocks:
     target_weight: 0.06
     strength: "Custom ASIC+VMware"
     risk: "估值已较高"
+
   AMD:
     name: "Advanced Micro Devices"
     layer: "L3"
-    archetype: "QualityGrowth"
     ai_exposure: 8
     moat: 7
     capex_risk: 6
     growth: 9
     target_weight: 0.03
     strength: "NVDA最可信替代"
-    risk: "Forward PE 51x"
+    risk: "Forward PE 51x,执行风险"
+
   MRVL:
     name: "Marvell"
     layer: "L3"
-    archetype: "QualityGrowth"
     ai_exposure: 8
     moat: 7
     capex_risk: 4
     growth: 9
     target_weight: 0.00
-    strength: "Custom ASIC+光互联"
-    risk: "客户集中"
-  INTC:
-    name: "Intel"
-    layer: "L3"
-    archetype: "Cyclical"
-    ai_exposure: 5
-    moat: 6
-    capex_risk: 5
-    growth: 6
-    target_weight: 0.00
-    strength: "Foundry转型+Gaudi"
-    risk: "执行不确定"
-  QCOM:
-    name: "Qualcomm"
-    layer: "L3"
-    archetype: "QualityGrowth"
-    ai_exposure: 6
-    moat: 8
-    capex_risk: 7
-    growth: 7
-    target_weight: 0.00
-    strength: "移动AI+Snapdragon"
-    risk: "苹果自研基带"
+    strength: "Custom ASIC+Celestial光互联"
+    risk: "客户集中于少数hyperscaler"
 
-  # === AI L4 内存/封装/光通信 ===
+  # ========== L4 内存/互联/封装 ==========
   MU:
     name: "Micron"
     layer: "L4"
-    archetype: "Cyclical"
     ai_exposure: 8
     moat: 7
     capex_risk: 7
@@ -152,183 +130,179 @@ stocks:
     target_weight: 0.04
     strength: "HBM绑定NVDA/AMD"
     risk: "存储强周期"
+
   AMKR:
     name: "Amkor Technology"
     layer: "L4"
-    archetype: "Cyclical"
     ai_exposure: 8
     moat: 7
     capex_risk: 6
     growth: 8
     target_weight: 0.00
-    strength: "独立先进封装"
+    strength: "独立先进封装备选"
     risk: "中小盘+客户集中"
+
   FN:
     name: "Fabrinet"
     layer: "L4"
-    archetype: "HardwareCapital"
     ai_exposure: 9
     moat: 7
     capex_risk: 5
     growth: 9
     target_weight: 0.00
     strength: "光模块代工霸主"
-    risk: "客户集中"
+    risk: "客户集中+台湾产能"
+
   COHR:
     name: "Coherent"
     layer: "L4"
-    archetype: "HardwareCapital"
     ai_exposure: 8
     moat: 7
     capex_risk: 5
     growth: 8
     target_weight: 0.00
     strength: "800G光模块+激光"
-    risk: "杠杆偏高"
+    risk: "转型期杠杆偏高"
 
-  # === AI L5 服务器/网络 ===
+  # ========== L5 服务器/网络 ==========
   ANET:
     name: "Arista Networks"
     layer: "L5"
-    archetype: "QualityGrowth"
     ai_exposure: 10
     moat: 9
     capex_risk: 5
     growth: 9
     target_weight: 0.05
-    strength: "AI以太网交换"
-    risk: "前2客户占40%+"
+    strength: "AI以太网交换霸主"
+    risk: "前2大客户占40%+"
+
   DELL:
     name: "Dell Technologies"
     layer: "L5"
-    archetype: "HardwareCapital"
     ai_exposure: 7
     moat: 6
     capex_risk: 6
     growth: 7
     target_weight: 0.00
-    strength: "AI服务器backlog"
+    strength: "AI服务器backlog强"
     risk: "PC业务拖累"
+
   CSCO:
     name: "Cisco"
     layer: "L5"
-    archetype: "HardwareCapital"
     ai_exposure: 6
     moat: 7
     capex_risk: 7
     growth: 6
     target_weight: 0.00
     strength: "Silicon One+Splunk"
-    risk: "AI收入占比低"
+    risk: "AI直接收入占比低"
 
-  # === AI L6 物理层 ===
+  # ========== L6 物理层(电力散热REITs) ==========
   VRT:
     name: "Vertiv Holdings"
     layer: "L6"
-    archetype: "QualityGrowth"
     ai_exposure: 10
     moat: 9
     capex_risk: 6
     growth: 10
     target_weight: 0.08
-    strength: "液冷+电力分配"
+    strength: "液冷+电力分配双龙头"
     risk: "估值已price-in"
+
   ETN:
     name: "Eaton"
     layer: "L6"
-    archetype: "QualityGrowth"
     ai_exposure: 8
     moat: 9
     capex_risk: 7
     growth: 8
     target_weight: 0.05
-    strength: "DC backlog11年"
-    risk: "AI暴露稀释"
+    strength: "DC backlog=11年建设量"
+    risk: "业务多元稀释AI暴露"
+
   TT:
     name: "Trane Technologies"
     layer: "L6"
-    archetype: "QualityGrowth"
     ai_exposure: 7
     moat: 8
     capex_risk: 7
     growth: 7
     target_weight: 0.00
-    strength: "液冷HVAC"
-    risk: "AI占比低"
+    strength: "液冷HVAC强"
+    risk: "AI暴露占比低"
+
   EQIX:
     name: "Equinix"
     layer: "L6"
-    archetype: "REIT"
     ai_exposure: 8
     moat: 9
     capex_risk: 6
     growth: 8
     target_weight: 0.03
-    strength: "互联托管全球"
+    strength: "互联托管REIT全球网络"
     risk: "利率敏感"
+
   DLR:
     name: "Digital Realty"
     layer: "L6"
-    archetype: "REIT"
     ai_exposure: 7
     moat: 8
     capex_risk: 6
     growth: 7
     target_weight: 0.00
     strength: "超大规模DC REIT"
-    risk: "续约价格压力"
+    risk: "租约续签价格压力"
 
-  # === AI L7 能源 ===
+  # ========== L7 能源 ==========
   VST:
     name: "Vistra"
     layer: "L7"
-    archetype: "Utility"
     ai_exposure: 8
     moat: 8
     capex_risk: 7
     growth: 9
     target_weight: 0.04
-    strength: "ERCOT+核电"
-    risk: "天然气波动"
+    strength: "ERCOT+核电双燃料"
+    risk: "天然气价格波动"
+
   CEG:
     name: "Constellation Energy"
     layer: "L7"
-    archetype: "Utility"
     ai_exposure: 9
     moat: 9
     capex_risk: 7
     growth: 9
     target_weight: 0.06
-    strength: "全美最大核电"
-    risk: "TMI重启"
+    strength: "全美最大核电舰队"
+    risk: "TMI重启执行"
+
   NEE:
     name: "NextEra Energy"
     layer: "L7"
-    archetype: "Utility"
     ai_exposure: 7
     moat: 8
     capex_risk: 8
     growth: 7
     target_weight: 0.00
-    strength: "可再生能源霸主"
-    risk: "利率+补贴"
+    strength: "全美最大可再生能源"
+    risk: "利率+补贴不确定性"
+
   GEV:
     name: "GE Vernova"
     layer: "L7"
-    archetype: "HardwareCapital"
     ai_exposure: 9
     moat: 8
     capex_risk: 6
     growth: 9
     target_weight: 0.03
     strength: "电网+燃机+SMR"
-    risk: "估值已反应"
+    risk: "估值已充分反应"
 
-  # === AI L8 超大规模云厂商 ===
+  # ========== L8 超大规模云厂商 ==========
   MSFT:
     name: "Microsoft"
     layer: "L8"
-    archetype: "QualityGrowth"
     ai_exposure: 9
     moat: 10
     capex_risk: 9
@@ -336,21 +310,21 @@ stocks:
     target_weight: 0.06
     strength: "Azure+Copilot+OpenAI"
     risk: "capex占收入45%+"
+
   GOOGL:
     name: "Alphabet"
     layer: "L8"
-    archetype: "QualityGrowth"
     ai_exposure: 9
     moat: 9
     capex_risk: 9
     growth: 8
     target_weight: 0.06
-    strength: "TPU+Gemini+搜索"
-    risk: "反垄断+搜索颠覆"
+    strength: "TPU自研+Gemini+搜索"
+    risk: "反垄断+搜索自我颠覆"
+
   AMZN:
     name: "Amazon"
     layer: "L8"
-    archetype: "QualityGrowth"
     ai_exposure: 8
     moat: 9
     capex_risk: 8
@@ -358,396 +332,17 @@ stocks:
     target_weight: 0.02
     strength: "AWS规模+Trainium"
     risk: "capex侵蚀FCF"
+
   META:
     name: "Meta Platforms"
     layer: "L8"
-    archetype: "QualityGrowth"
     ai_exposure: 8
     moat: 8
     capex_risk: 8
     growth: 8
     target_weight: 0.02
     strength: "广告AI+Llama+RL"
-    risk: "Reality Lab烧钱"
-
-  # === Mag7+科技 ===
-  AAPL:
-    name: "Apple"
-    layer: "NotAI"
-    archetype: "QualityGrowth"
-    ai_exposure: 4
-    moat: 10
-    capex_risk: 9
-    growth: 5
-    target_weight: 0.00
-    strength: "生态+品牌+服务"
-    risk: "中国市场+创新放缓"
-  TSLA:
-    name: "Tesla"
-    layer: "NotAI"
-    archetype: "QualityGrowth"
-    ai_exposure: 5
-    moat: 7
-    capex_risk: 7
-    growth: 7
-    target_weight: 0.00
-    strength: "FSD+Optimus+能源"
-    risk: "估值高波动"
-  ORCL:
-    name: "Oracle"
-    layer: "L8"
-    archetype: "QualityGrowth"
-    ai_exposure: 7
-    moat: 8
-    capex_risk: 5
-    growth: 8
-    target_weight: 0.00
-    strength: "OCI+AI云合同"
-    risk: "5Y CDS扩张"
-  CRM:
-    name: "Salesforce"
-    layer: "NotAI"
-    archetype: "QualityGrowth"
-    ai_exposure: 5
-    moat: 8
-    capex_risk: 8
-    growth: 6
-    target_weight: 0.00
-    strength: "CRM+Agentforce"
-    risk: "增长放缓"
-  NOW:
-    name: "ServiceNow"
-    layer: "NotAI"
-    archetype: "SaaS"
-    ai_exposure: 6
-    moat: 8
-    capex_risk: 8
-    growth: 8
-    target_weight: 0.00
-    strength: "企业IT+AI Agent"
-    risk: "估值已高"
-  PLTR:
-    name: "Palantir"
-    layer: "NotAI"
-    archetype: "SaaS"
-    ai_exposure: 8
-    moat: 7
-    capex_risk: 6
-    growth: 9
-    target_weight: 0.00
-    strength: "Foundry+AIP"
-    risk: "Forward PE 180x极高"
-  SNOW:
-    name: "Snowflake"
-    layer: "NotAI"
-    archetype: "SaaS"
-    ai_exposure: 6
-    moat: 7
-    capex_risk: 6
-    growth: 7
-    target_weight: 0.00
-    strength: "数据云+多云中立"
-    risk: "Databricks竞争"
-
-  # === 金融 ===
-  JPM:
-    name: "JPMorgan Chase"
-    layer: "NotAI"
-    archetype: "FinancialBank"
-    ai_exposure: 4
-    moat: 9
-    capex_risk: 8
-    growth: 5
-    target_weight: 0.00
-    strength: "全美最大银行"
-    risk: "信贷周期"
-  BAC:
-    name: "Bank of America"
-    layer: "NotAI"
-    archetype: "FinancialBank"
-    ai_exposure: 3
-    moat: 8
-    capex_risk: 8
-    growth: 5
-    target_weight: 0.00
-    strength: "消费银行+Buffett"
-    risk: "利率敏感"
-  GS:
-    name: "Goldman Sachs"
-    layer: "NotAI"
-    archetype: "FinancialBank"
-    ai_exposure: 4
-    moat: 8
-    capex_risk: 7
-    growth: 6
-    target_weight: 0.00
-    strength: "投行+财富管理"
-    risk: "市场周期"
-  V:
-    name: "Visa"
-    layer: "NotAI"
-    archetype: "QualityGrowth"
-    ai_exposure: 3
-    moat: 10
-    capex_risk: 9
-    growth: 7
-    target_weight: 0.00
-    strength: "支付网络垄断"
-    risk: "稳定币竞争"
-  MA:
-    name: "Mastercard"
-    layer: "NotAI"
-    archetype: "QualityGrowth"
-    ai_exposure: 3
-    moat: 10
-    capex_risk: 9
-    growth: 7
-    target_weight: 0.00
-    strength: "支付网络寡头"
-    risk: "稳定币竞争"
-  HOOD:
-    name: "Robinhood"
-    layer: "NotAI"
-    archetype: "FinancialBroker"
-    ai_exposure: 3
-    moat: 5
-    capex_risk: 6
-    growth: 8
-    target_weight: 0.00
-    strength: "零佣金+加密"
-    risk: "估值扩张"
-  SCHW:
-    name: "Charles Schwab"
-    layer: "NotAI"
-    archetype: "FinancialBroker"
-    ai_exposure: 3
-    moat: 8
-    capex_risk: 8
-    growth: 6
-    target_weight: 0.00
-    strength: "全美最大零售券商"
-    risk: "利率敏感"
-  BRK-B:
-    name: "Berkshire Hathaway B"
-    layer: "NotAI"
-    archetype: "Insurance"
-    ai_exposure: 2
-    moat: 10
-    capex_risk: 10
-    growth: 5
-    target_weight: 0.00
-    strength: "Buffett+保险浮存"
-    risk: "继任者风险"
-
-  # === 加密相关 ===
-  COIN:
-    name: "Coinbase"
-    layer: "NotAI"
-    archetype: "CryptoExchange"
-    ai_exposure: 3
-    moat: 7
-    capex_risk: 5
-    growth: 8
-    target_weight: 0.00
-    strength: "全美最大合规交易所"
-    risk: "高度依赖BTC价格"
-  MSTR:
-    name: "MicroStrategy"
-    layer: "NotAI"
-    archetype: "BTCProxy"
-    ai_exposure: 1
-    moat: 5
-    capex_risk: 4
-    growth: 7
-    target_weight: 0.00
-    strength: "全美最大BTC企业持仓"
-    risk: "高杠杆+溢价回归"
-  MARA:
-    name: "Marathon Digital"
-    layer: "NotAI"
-    archetype: "BTCProxy"
-    ai_exposure: 2
-    moat: 4
-    capex_risk: 5
-    growth: 6
-    target_weight: 0.00
-    strength: "美国最大BTC矿企"
-    risk: "BTC+电力成本"
-  RIOT:
-    name: "Riot Platforms"
-    layer: "NotAI"
-    archetype: "BTCProxy"
-    ai_exposure: 2
-    moat: 4
-    capex_risk: 5
-    growth: 6
-    target_weight: 0.00
-    strength: "Texas BTC+AI转型"
-    risk: "BTC价格相关"
-
-  # === 消费品 ===
-  COST:
-    name: "Costco"
-    layer: "NotAI"
-    archetype: "Consumer"
-    ai_exposure: 1
-    moat: 9
-    capex_risk: 9
-    growth: 7
-    target_weight: 0.00
-    strength: "会员制粘性"
-    risk: "估值已高"
-  WMT:
-    name: "Walmart"
-    layer: "NotAI"
-    archetype: "Consumer"
-    ai_exposure: 3
-    moat: 9
-    capex_risk: 9
-    growth: 6
-    target_weight: 0.00
-    strength: "规模+电商转型"
-    risk: "亚马逊竞争"
-  KO:
-    name: "Coca-Cola"
-    layer: "NotAI"
-    archetype: "Consumer"
-    ai_exposure: 1
-    moat: 10
-    capex_risk: 10
-    growth: 5
-    target_weight: 0.00
-    strength: "品牌+股息"
-    risk: "GLP-1影响"
-
-  # === 医药 ===
-  LLY:
-    name: "Eli Lilly"
-    layer: "NotAI"
-    archetype: "BioPharma"
-    ai_exposure: 2
-    moat: 9
-    capex_risk: 8
-    growth: 9
-    target_weight: 0.00
-    strength: "GLP-1+Alzheimer"
-    risk: "估值price-in"
-  NVO:
-    name: "Novo Nordisk"
-    layer: "NotAI"
-    archetype: "BioPharma"
-    ai_exposure: 2
-    moat: 9
-    capex_risk: 8
-    growth: 8
-    target_weight: 0.00
-    strength: "Wegovy/Ozempic"
-    risk: "LLY+口服GLP-1"
-  UNH:
-    name: "UnitedHealth"
-    layer: "NotAI"
-    archetype: "BioPharma"
-    ai_exposure: 4
-    moat: 8
-    capex_risk: 9
-    growth: 7
-    target_weight: 0.00
-    strength: "保险+OptumRx"
-    risk: "监管+承保"
-
-  # === 能源 ===
-  XOM:
-    name: "ExxonMobil"
-    layer: "NotAI"
-    archetype: "Energy"
-    ai_exposure: 1
-    moat: 7
-    capex_risk: 7
-    growth: 5
-    target_weight: 0.00
-    strength: "全球最大油企之一"
-    risk: "油价周期"
-  CVX:
-    name: "Chevron"
-    layer: "NotAI"
-    archetype: "Energy"
-    ai_exposure: 1
-    moat: 7
-    capex_risk: 7
-    growth: 5
-    target_weight: 0.00
-    strength: "高效上游+股息王"
-    risk: "油价周期"
-
-  # === 高波动/热门 ===
-  NFLX:
-    name: "Netflix"
-    layer: "NotAI"
-    archetype: "QualityGrowth"
-    ai_exposure: 3
-    moat: 8
-    capex_risk: 8
-    growth: 7
-    target_weight: 0.00
-    strength: "流媒体+广告变现"
-    risk: "内容成本"
-  DIS:
-    name: "Disney"
-    layer: "NotAI"
-    archetype: "Consumer"
-    ai_exposure: 2
-    moat: 8
-    capex_risk: 6
-    growth: 5
-    target_weight: 0.00
-    strength: "IP+乐园+流媒体"
-    risk: "Disney+亏损"
-  UBER:
-    name: "Uber"
-    layer: "NotAI"
-    archetype: "QualityGrowth"
-    ai_exposure: 4
-    moat: 7
-    capex_risk: 7
-    growth: 8
-    target_weight: 0.00
-    strength: "出行+外卖+自动驾驶"
-    risk: "Robotaxi威胁"
-  ABNB:
-    name: "Airbnb"
-    layer: "NotAI"
-    archetype: "QualityGrowth"
-    ai_exposure: 3
-    moat: 7
-    capex_risk: 9
-    growth: 7
-    target_weight: 0.00
-    strength: "全球房源+轻资产"
-    risk: "监管+酒店反弹"
-  SHOP:
-    name: "Shopify"
-    layer: "NotAI"
-    archetype: "SaaS"
-    ai_exposure: 4
-    moat: 7
-    capex_risk: 7
-    growth: 8
-    target_weight: 0.00
-    strength: "电商SaaS+支付"
-    risk: "估值高+宏观"
-
-# ============ ETF基准(用于对比,不参与portfolio打分) ============
-benchmarks:
-  SPY:
-    name: "SPDR S&P 500"
-  QQQ:
-    name: "Invesco QQQ"
-  SMH:
-    name: "VanEck Semiconductor"
-  XLK:
-    name: "Technology Select Sector"
-  XLF:
-    name: "Financial Select Sector"
+    risk: "Reality Lab持续烧钱"
 
 # ============ 风险监控阈值 ============
 risk_thresholds:
@@ -755,7 +350,8 @@ risk_thresholds:
   vix_danger: 30
   treasury_10y_warning: 5.0
   sp500_shiller_pe_warning: 38
+  # QQQ距离200日均线的比率,低于此值警戒
   qqq_ma200_ratio_warning: 0.97
 
-# ============ 总投资金额 ============
+# ============ 总投资金额(美元) ============
 total_investment: 100000
