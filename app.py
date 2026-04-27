@@ -13,6 +13,7 @@ from datetime import datetime
 from data_fetcher import fetch_all_stocks, fetch_macro_indicators, fetch_price_history
 from scoring import build_scoring_table
 from valuation_models import run_all_models
+from layer_detector import detect_layer, get_applicable_models
 
 
 # ============ 页面配置 ============
@@ -31,6 +32,15 @@ def load_config():
 
 
 config = load_config()
+
+# ===== Session State 初始化股票池 =====
+if 'custom_stocks' not in st.session_state:
+    # 复制config里的股票作为起点(不直接引用,因为要支持删除)
+    import copy
+    st.session_state.custom_stocks = copy.deepcopy(config['stocks'])
+
+# 实际使用的股票池(动态)
+config['stocks'] = st.session_state.custom_stocks
 
 
 # ============ 侧边栏 ============
@@ -83,6 +93,204 @@ with st.sidebar:
 # ============ 主体 ============
 st.title("🤖 AI Data Center Portfolio Dashboard")
 st.caption(f"产业链7+1层 · 六维度打分 · 数据自动更新 | 最后加载: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+
+# ============ 股票池管理 ============
+with st.expander(f"📋 股票池管理 (当前 {len(config['stocks'])} 只 — 点击展开增删)", expanded=False):
+    tab_add, tab_remove, tab_export = st.tabs(["➕ 添加股票", "🗑️ 删除股票", "📤 导出配置"])
+
+    # ===== 添加股票 =====
+    with tab_add:
+        st.markdown("**输入ticker,系统自动识别layer和适用估值模型**")
+
+        col_a1, col_a2 = st.columns([2, 1])
+        with col_a1:
+            new_ticker_input = st.text_input(
+                "Ticker (例如: PLTR, ORCL, NVO)",
+                key='new_ticker',
+                placeholder="输入股票代码",
+            ).upper().strip()
+
+        with col_a2:
+            check_btn = st.button("🔍 识别Layer", use_container_width=True, type="primary")
+
+        if check_btn and new_ticker_input:
+            # 检查是否已存在
+            if new_ticker_input in config['stocks']:
+                st.warning(f"⚠️ {new_ticker_input} 已经在股票池中,请先删除再添加")
+            else:
+                with st.spinner(f"正在分析 {new_ticker_input}..."):
+                    detection = detect_layer(new_ticker_input)
+                    st.session_state['detection_result'] = detection
+
+        # 如果有识别结果,显示并允许确认
+        if 'detection_result' in st.session_state and st.session_state.get('detection_result', {}).get('ticker'):
+            d = st.session_state['detection_result']
+
+            if d['layer'] is None:
+                st.error(f"❌ 无法自动识别layer: {d['reason']}")
+                manual_choice = st.selectbox(
+                    "请手动选择产业链层级",
+                    options=['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8'],
+                    format_func=lambda x: {
+                        'L1': 'L1 上游设备', 'L2': 'L2 代工', 'L3': 'L3 芯片设计',
+                        'L4': 'L4 内存/封装/光通信', 'L5': 'L5 服务器/网络',
+                        'L6': 'L6 物理层(电力/REIT)', 'L7': 'L7 能源', 'L8': 'L8 超大规模云'
+                    }.get(x, x),
+                    key='manual_layer',
+                )
+                d['layer'] = manual_choice
+                d['confidence'] = 'manual'
+                final_layer = manual_choice
+            else:
+                # 显示识别结果
+                col_d1, col_d2, col_d3 = st.columns(3)
+                conf_emoji = {'high': '🟢', 'medium': '🟡', 'low': '🔴', 'manual': '✋'}
+                col_d1.metric(
+                    f"自动识别层级",
+                    d['layer'],
+                    f"{conf_emoji.get(d['confidence'], '')} {d['confidence']}信心"
+                )
+                col_d2.metric("公司名", d.get('name') or 'N/A')
+                col_d3.metric("Yahoo Industry", d.get('industry') or 'N/A')
+
+                if d['confidence'] != 'high':
+                    st.warning(f"识别原因: {d['reason']}")
+
+                # 允许覆盖
+                layer_options = ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8']
+                idx = layer_options.index(d['layer']) if d['layer'] in layer_options else 0
+                final_layer = st.selectbox(
+                    "确认/调整层级 (如果识别不准,在这里改)",
+                    options=layer_options,
+                    index=idx,
+                    format_func=lambda x: {
+                        'L1': 'L1 上游设备', 'L2': 'L2 代工', 'L3': 'L3 芯片设计',
+                        'L4': 'L4 内存/封装/光通信', 'L5': 'L5 服务器/网络',
+                        'L6': 'L6 物理层', 'L7': 'L7 能源', 'L8': 'L8 超大规模云'
+                    }.get(x, x),
+                    key='final_layer',
+                )
+
+            # 显示该layer的适用估值模型
+            applicable_models = get_applicable_models(final_layer, d['ticker'])
+            st.markdown("**该layer适用的估值模型:**")
+            mc = st.columns(6)
+            for i, (mname, m) in enumerate(applicable_models.items()):
+                col = mc[i % 6]
+                if m['applies']:
+                    col.success(f"✓ {mname}")
+                else:
+                    col.caption(f"✗ {mname}")
+
+            # 定性打分输入
+            st.markdown("**定性打分 (1-10分,后续可调)**")
+            col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+            ai_exp = col_s1.slider("AI暴露", 1, 10, 7, key='new_ai')
+            moat_in = col_s2.slider("护城河", 1, 10, 7, key='new_moat')
+            risk_in = col_s3.slider("Capex风险", 1, 10, 6,
+                                     help="分数越高=风险越低", key='new_risk')
+            growth_in = col_s4.slider("长期成长", 1, 10, 7, key='new_growth')
+
+            col_n1, col_n2 = st.columns(2)
+            company_name = col_n1.text_input(
+                "公司名(可选,留空用Yahoo名)",
+                value=d.get('name', ''),
+                key='new_name',
+            )
+            target_w = col_n2.number_input(
+                "目标权重 %", min_value=0.0, max_value=15.0, value=0.0, step=0.5,
+                help="0=只观察不持仓,后续可调",
+                key='new_weight',
+            ) / 100
+
+            col_strength, col_risk_text = st.columns(2)
+            strength_text = col_strength.text_input(
+                "核心优势(简短)", value="", key='new_strength',
+                placeholder="例: AI芯片自研能力"
+            )
+            risk_text = col_risk_text.text_input(
+                "核心风险(简短)", value="", key='new_risk_text',
+                placeholder="例: 估值已较高"
+            )
+
+            # 确认添加
+            if st.button("✅ 确认添加到股票池", type="primary", use_container_width=True):
+                st.session_state.custom_stocks[d['ticker']] = {
+                    'name': company_name or d['ticker'],
+                    'layer': final_layer,
+                    'ai_exposure': ai_exp,
+                    'moat': moat_in,
+                    'capex_risk': risk_in,
+                    'growth': growth_in,
+                    'target_weight': target_w,
+                    'strength': strength_text or '',
+                    'risk': risk_text or '',
+                }
+                # 清除识别结果
+                del st.session_state['detection_result']
+                # 清除Yahoo数据缓存(让新股票被拉取)
+                st.cache_data.clear()
+                st.success(f"✅ 已添加 {d['ticker']} 到股票池(层级={final_layer})")
+                st.rerun()
+
+    # ===== 删除股票 =====
+    with tab_remove:
+        st.markdown("**从股票池移除(本次会话生效,导出config后永久生效)**")
+
+        if not config['stocks']:
+            st.info("股票池为空")
+        else:
+            # 按layer分组显示
+            sorted_stocks = sorted(config['stocks'].items(),
+                                   key=lambda x: (x[1].get('layer', 'Z'), x[0]))
+            stocks_to_remove = st.multiselect(
+                "选择要删除的股票",
+                options=[s[0] for s in sorted_stocks],
+                format_func=lambda t: f"{t} ({config['stocks'][t].get('layer', '?')}) - "
+                                       f"{config['stocks'][t].get('name', '')}",
+                key='remove_select',
+            )
+
+            if stocks_to_remove and st.button(
+                f"🗑️ 删除选中的 {len(stocks_to_remove)} 只", type="primary"
+            ):
+                for t in stocks_to_remove:
+                    if t in st.session_state.custom_stocks:
+                        del st.session_state.custom_stocks[t]
+                st.cache_data.clear()
+                st.success(f"已删除 {len(stocks_to_remove)} 只: {', '.join(stocks_to_remove)}")
+                st.rerun()
+
+    # ===== 导出配置 =====
+    with tab_export:
+        st.markdown("**永久保存修改: 下载新的config.yaml,push到GitHub**")
+        st.caption(
+            "Streamlit Cloud部署的应用是只读文件系统,本次会话的修改不会保存到原来的config.yaml。"
+            "下载后覆盖你本地的config.yaml,git push即可永久生效。"
+        )
+
+        # 构建导出内容
+        export_config = {
+            'weights': config.get('weights', {}),
+            'stocks': st.session_state.custom_stocks,
+            'risk_thresholds': config.get('risk_thresholds', {}),
+            'total_investment': total_inv,
+        }
+        export_yaml = yaml.dump(export_config, allow_unicode=True,
+                                 default_flow_style=False, sort_keys=False)
+
+        st.download_button(
+            "📥 下载 config.yaml",
+            data=export_yaml,
+            file_name='config.yaml',
+            mime='text/yaml',
+            use_container_width=True,
+        )
+
+        with st.expander("预览YAML内容"):
+            st.code(export_yaml, language='yaml')
+
 
 # 加载数据
 with st.spinner("📡 从Yahoo Finance拉取数据中..."):
