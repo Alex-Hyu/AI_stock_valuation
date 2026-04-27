@@ -1,201 +1,145 @@
-# AI Data Center Portfolio Dashboard
+# AI Portfolio Dashboard v7
 
-一个实时更新的AI产业链投资组合打分系统。基于六维度评分框架，覆盖从上游EUV设备到下游能源的7+1层产业链，共30只候选股票。
+**用户零维护版本** — 部署后只需打开浏览器即可使用,无需运行 terminal,无需维护快照。
 
-## 🎯 核心功能
+## 核心特性
 
-- **实时数据**：自动从Yahoo Finance拉取股价、P/E、利润率、ROE等关键数据
-- **六维度打分**：AI暴露度 / 财务质量 / 估值 / 护城河 / Capex风险 / 长期成长
-- **多模型估值一致性**（v2新增）：5个独立估值模型(Forward PE、Reverse DCF、ROE-adjusted P/B、EV/EBITDA、Rule of 40/AFFO Yield)交叉验证,识别真正便宜的股票
-- **智能分档**：Tier 1 / Tier 2 / Tier 3 / Reject，自动触发估值一票否决
-- **风险监控**：VIX、10Y美债、QQQ MA200等宏观指标实时警报
-- **产业链分层**：7层+1外部层，确保组合跨周期分散
-- **交互式调整**：侧边栏可实时调整权重、投资金额
+- **58只精选股票 + 5个ETF基准** 涵盖 AI 产业链 + Mag 7 + 金融 + 加密 + 消费 + 医药
+- **直连 Alpha Vantage API** 不依赖 yfinance(yfinance已被Yahoo严格rate limit,2025年起几乎无法使用)
+- **24小时自动缓存** 每只股票每天只调1次API,绝不浪费额度
+- **优先级加载** target_weight 高的核心持仓优先,即使额度用完也保证最重要的股票有数据
+- **多模型估值** 5+种估值方法按商业模式自动选择
+- **零维护** 完全免费,部署后忘记它,打开就能用
 
-## 🔬 多模型估值核心逻辑(v2)
+## 快速部署 (一次性,5分钟搞定)
 
-单一指标都有盲区——比如MU的Forward PE只有12x看起来很便宜,但这是周期股峰值假象。多模型一致性评分通过让5个独立模型同时表态来识别真信号:
+### 第一步:获取免费API Key
 
-| 模型 | 适用范围 | 核心问题 |
-|------|---------|---------|
-| Forward PE | 大多数 | 当前估值是便宜还是贵? |
-| Reverse DCF | 有FCF的公司 | 市场隐含了多少未来增长? |
-| ROE-adjusted P/B | 资产密集/周期 | 高ROE辩护高P/B了吗? |
-| EV/EBITDA | 大多数 | 跨周期看,EV的回报率? |
-| Rule of 40 / AFFO Yield | SaaS / REITs | 类SaaS或REIT专用估值 |
+1. 去 https://www.alphavantage.co/support/#api-key
+2. 填邮箱、姓名(随便填),点 GET FREE API KEY
+3. 邮箱秒收到 32 位字符的 key
 
-每个模型独立给出1-10分(>=7=便宜,<=4=贵),综合"几个模型说便宜"输出最终信号:
-- 🟢 强买入: ≥75%模型说便宜且综合分≥7
-- 🟢 买入: ≥50%模型说便宜
-- ⚪ 中性: 模型分歧
-- 🟡 偏贵: ≥40%模型说贵
-- 🔴 避开: ≥60%模型说贵或综合分≤3.5
-
-## 📁 文件结构
-
-```
-ai-portfolio-dashboard/
-├── app.py               # Streamlit主应用
-├── data_fetcher.py      # Yahoo Finance数据获取
-├── scoring.py           # 六维度评分引擎
-├── config.yaml          # 股票池+权重+阈值配置
-├── requirements.txt     # Python依赖
-├── .streamlit/
-│   └── config.toml      # UI主题配置
-├── .gitignore
-└── README.md            # 本文档
-```
-
-## 🚀 部署到Streamlit Cloud（推荐，免费）
-
-### 第一步：上传到GitHub
+### 第二步:Push到GitHub
 
 ```bash
-# 在本地创建仓库
+cd ai_dashboard
 git init
 git add .
-git commit -m "Initial commit: AI portfolio dashboard"
-
-# 连接到你的GitHub仓库
-git remote add origin https://github.com/YOUR_USERNAME/ai-portfolio-dashboard.git
-git branch -M main
+git commit -m "v7"
+git remote add origin https://github.com/YOUR_USERNAME/ai-portfolio.git
 git push -u origin main
 ```
 
-### 第二步：在Streamlit Cloud部署
+### 第三步:在Streamlit Cloud部署
 
-1. 访问 https://share.streamlit.io/
-2. 用GitHub账号登录
-3. 点击"New app"
-4. 选择你的仓库和`main`分支
-5. Main file path填：`app.py`
-6. 点击"Deploy!"
+1. 去 https://share.streamlit.io
+2. New app → 选你的仓库 → main branch → app.py
+3. 点 Deploy
 
-部署大约需要2-3分钟。之后你会得到一个URL像 `https://your-app.streamlit.app`，随时随地访问。
+### 第四步:配置API Key (关键!)
 
-### 第三步：每次更新
+部署后:
+1. 在你的 app 页面右上角点 ⋮ → **Settings**
+2. 左侧选 **Secrets**
+3. 在文本框里输入(注意双引号):
+   ```
+   ALPHA_VANTAGE_KEY = "你的32位key"
+   ```
+4. 点 **Save**
+5. App 自动重启,完成
 
-修改本地代码（比如在`config.yaml`里调整股票评分）后：
+之后每次想看就直接打开浏览器访问 dashboard URL,**再也不用碰任何 terminal**。
 
-```bash
-git add .
-git commit -m "Update scores for Q2 2026"
-git push
-```
+## 免费版限制说明
 
-Streamlit Cloud会在1-2分钟内自动重新部署。
+Alpha Vantage 免费版每天 **25次** API调用。这意味着:
 
-## 💻 本地运行（可选）
+- **第1天首次访问**: 自动加载前25只股票(按 target_weight 优先级,核心持仓先加载)
+- **第2天访问**: 再加载下一批25只(自动跳过已缓存的)
+- **第3天**: 加载完最后一批
+- **3天后**: 全部63只都有数据,缓存24小时持续可用
+- **每周自动续期**: 缓存到期后自动重新加载
 
-如果你想在本地测试：
+如果觉得太慢,可以升级:
+- **Alpha Vantage Premium $50/月** → 75次/分钟,1分钟全部刷新
+- **FMP $14/月** → 数据完整性更好
 
-```bash
-# 安装依赖
-pip install -r requirements.txt
+但**普通使用免费版完全够**——你又不会每天频繁查所有60多只。
 
-# 运行
-streamlit run app.py
-```
-
-浏览器会自动打开 `http://localhost:8501`
-
-## ⚙️ 自定义配置
-
-### 调整股票评分（每季度做一次）
-
-打开`config.yaml`，每只股票有4个定性维度可调（1-10分）：
-- `ai_exposure`: AI收入暴露度
-- `moat`: 护城河强度
-- `capex_risk`: Capex周期风险（分数越高=风险越低）
-- `growth`: 长期成长性
-
-另外两个维度（`financial_quality`和`valuation`）会自动从Yahoo Finance实时计算。
-
-### 调整目标仓位
-
-在`config.yaml`每只股票的`target_weight`字段修改（0-1之间），合计应<1.0保留现金对冲仓。
-
-### 添加/删除股票
-
-直接在`config.yaml`的`stocks:`下面增删条目即可。格式参考现有条目。
-
-## 📊 评分逻辑
-
-### 综合分公式
+## 文件结构
 
 ```
-综合分 = 10 × Σ(维度分 × 权重)
+ai-portfolio-dashboard/
+├── app.py                   # Streamlit主应用
+├── data_fetcher.py          # Alpha Vantage直连
+├── scoring.py               # 六维度评分
+├── valuation_models.py      # 5+种估值模型
+├── business_archetype.py    # 16种商业模式定义
+├── config.yaml              # 股票池配置(主要维护点)
+├── requirements.txt
+├── .streamlit/config.toml
+└── .gitignore
 ```
 
-满分100分。默认权重：
-- AI暴露 20% / 财务质量 20% / 估值 15% / 护城河 15% / Capex风险 15% / 长期成长 15%
+## 维护
 
-### 分档规则
+### 唯一需要手动做的事:加新股票
 
-- **Tier 1** (≥80分): 核心仓位，单只10-15%
-- **Tier 2** (70-80分): 卫星仓位，单只5-10%
-- **Tier 3** (60-70分): 小仓位博弈，单只<5%
-- **Reject** (<60分 或 估值<4分): 不纳入组合
+编辑 `config.yaml`,在 `stocks:` 下加新条目:
 
-### 自动计算维度
-
-**财务质量**（综合得分1-10）：
-- 营业利润率 > 40% = +2分，< 5% = -1分
-- ROE > 30% = +1.5分
-- 负债权益比 > 200 = -1.5分
-- 营收增速 > 30% = +1.5分
-
-**估值**（越便宜越高分）：
-- Forward PE < 15 = +2.5分，> 60 = -2.5分
-- P/S < 3 = +1分，> 20 = -1分
-- FCF Yield > 5% = +1.5分
-
-## ⚠️ 数据来源限制
-
-免费方案完全依赖Yahoo Finance (`yfinance`库)。已知限制：
-- 分析师一致预期有时滞
-- 分部数据需手动读10-K（`ai_exposure`字段即为此目的）
-- 偶尔某只股票的某个字段返回None（代码已做fallback）
-
-如果将来预算允许，可以考虑：
-- **Financial Modeling Prep** ($15/月): 更完整的财务数据
-- **Polygon.io** ($29/月): 实时行情+历史数据
-- **NewsAPI** ($0-449/月): 新闻集成
-
-## 🛠️ 常见问题
-
-### Q: Streamlit Cloud部署后数据不更新怎么办？
-
-A: 数据默认缓存1小时。在侧边栏点"强制刷新数据"即可。
-
-### Q: 某只股票显示N/A？
-
-A: Yahoo Finance的`info`字段偶尔会临时返回空值。等几分钟或手动刷新。如果持续，可能是ticker变动（如ADR退市）。
-
-### Q: 如何加入新的风险指标？
-
-A: 在`data_fetcher.py`的`fetch_macro_indicators()`函数里添加。比如想监控BTC作为流动性指标：
-
-```python
-try:
-    btc = yf.Ticker("BTC-USD").history(period="5d")
-    indicators['btc'] = btc['Close'].iloc[-1]
-except:
-    indicators['btc'] = None
+```yaml
+NEW_TICKER:
+  name: "公司名"
+  layer: "L3"               # L1-L8 或 NotAI
+  archetype: "QualityGrowth"  # 见下表
+  ai_exposure: 7
+  moat: 8
+  capex_risk: 6
+  growth: 7
+  target_weight: 0.00
+  strength: "核心优势"
+  risk: "核心风险"
 ```
 
-然后在`app.py`里添加对应的`st.metric`。
+push 到 GitHub,Streamlit Cloud 1-2分钟自动重新部署。
 
-### Q: 能否发邮件/Slack警报？
+## 16种商业模式
 
-A: 当前版本是被动式dashboard。如需主动警报，建议用GitHub Actions做定时任务：每天运行一次脚本，发现风险指标破线就发送通知（可以用免费的Gmail SMTP或Slack webhook）。
+| Archetype | 估值方法 | 代表股票 |
+|-----------|---------|---------|
+| QualityGrowth | Forward PE+Reverse DCF+Rule of 40 | NVDA, MSFT, V |
+| Cyclical | P/B+EV/EBITDA | MU, INTC, AMAT |
+| Foundry | EV/EBITDA+P/B | TSM |
+| HardwareCapital | EV/EBITDA+Forward PE | DELL, CSCO |
+| SaaS | Rule of 40+EV/Sales | PLTR, NOW, SNOW |
+| REIT | AFFO Yield+EV/EBITDA | EQIX, DLR |
+| Utility | Dividend Yield+P/B | NEE, DUK, CEG |
+| FinancialBank | P/B+ROE | JPM, BAC |
+| FinancialBroker | P/B+Forward PE | HOOD, SCHW |
+| Insurance | P/B | BRK-B |
+| CryptoExchange | P/B+Volume×TakeRate | COIN |
+| BTCProxy | P/NAV(BTC溢价) | MSTR, MARA |
+| Consumer | Forward PE+股息 | KO, WMT, COST |
+| BioPharma | Pipeline NPV | LLY, NVO |
+| Energy | EV/EBITDA+P/B | XOM, CVX |
+| Generic | 通用兜底 | 其他 |
 
-## 📝 版本记录
+## 故障排查
 
-- v1.0 (2026-04-25): 初版，30只股票，六维度打分，Streamlit Cloud部署就绪
+### 几乎所有股票都显示N/A
+**原因**: 忘了在 Streamlit Cloud Secrets 里加 API key  
+**解决**: Settings → Secrets → 加 `ALPHA_VANTAGE_KEY = "你的key"` → Save
 
-## ⚠️ 免责声明
+### 顶部健康状态条显示"今日额度用完"
+**正常现象**: 25次/天用完了。已加载的股票数据缓存24小时仍可用,剩余的明天自动加载。
 
-本工具仅供学习研究使用，**不构成任何投资建议**。所有数据来自Yahoo Finance公开API，可能有延迟或错误。投资决策请结合SEC 10-K/10-Q原始财报、多方分析师意见并咨询持牌投顾。
+### Dashboard上某只股票没有P/B或EV/EBITDA数据
+**原因**: Alpha Vantage 对某些股票(如新IPO、ADR)的部分字段返回 None  
+**解决**: 这只股票的多模型估值会自动跳过缺失的模型,只用其他模型综合判断
 
-过去业绩不代表未来表现。AI板块目前估值较高，capex周期存在显著下行风险。
+### 想强制刷新某只股票数据
+点侧边栏的 **🔄 强制刷新数据** 按钮(注意会消耗API额度)
+
+## 免责声明
+
+本工具仅供学习研究,**不构成投资建议**。数据可能延迟或不完整,投资决策请结合 SEC 10-K/10-Q 原始财报独立验证。
