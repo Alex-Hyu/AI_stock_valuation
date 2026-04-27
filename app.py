@@ -437,6 +437,52 @@ st.caption(
     "看几个独立模型给出一致信号。多模型一致比单一指标可靠得多。"
 )
 
+# ===== 数据透明度诊断 =====
+with st.expander("🔍 数据来源诊断 — 看到N/A时点这里", expanded=False):
+    st.markdown("""
+    **为什么有时P/B或EV/EBITDA显示N/A？** 三个常见原因：
+    1. **Stooq fallback模式** — Yahoo被rate limit挡住时,代码自动降级到Stooq(只有价格,无基本面)
+    2. **Yahoo info字段缺失** — Yahoo免费API偶尔返回不完整,同一只股票今天有数据明天就None
+    3. **指标本身不适用** — REIT没有意义的EV/EBITDA(用FFO代替),亏损股票账面价值为负
+
+    下表显示每只股票的实际数据来源:
+    """)
+
+    diag_data = []
+    for _, r in stock_df.iterrows():
+        diag_data.append({
+            'Ticker': r['ticker'],
+            '数据源': r.get('source', 'unknown'),
+            'P/B': f"{r.get('price_to_book'):.2f}" if pd.notna(r.get('price_to_book')) else "N/A",
+            'P/B来源': r.get('pb_source') or '—',
+            'EV/EBITDA': f"{r.get('ev_to_ebitda'):.1f}" if pd.notna(r.get('ev_to_ebitda')) else "N/A",
+            'EV/EBITDA来源': r.get('ev_ebitda_source') or '—',
+            '错误': str(r.get('error', ''))[:50] if r.get('error') else '',
+        })
+    diag_df = pd.DataFrame(diag_data)
+    st.dataframe(diag_df, hide_index=True, use_container_width=True, height=400)
+
+    # 统计
+    col_d1, col_d2, col_d3 = st.columns(3)
+    yahoo_count = (stock_df['source'] == 'yahoo').sum()
+    stooq_count = (stock_df['source'] == 'stooq_fallback').sum()
+    error_count = stock_df['error'].notna().sum()
+    col_d1.metric("Yahoo成功", f"{yahoo_count}/{len(stock_df)}")
+    col_d2.metric("Stooq fallback", f"{stooq_count}")
+    col_d3.metric("完全失败", f"{error_count}")
+
+    st.markdown("""
+    **来源代码说明**:
+    - `info`: Yahoo直接返回(最理想)
+    - `computed_from_bookvalue`: P/B手算 = 价格÷每股账面价值
+    - `computed_from_balancesheet`: P/B手算 = 市值÷股东权益
+    - `computed_from_components`: EV/EBITDA手算 = 企业价值÷EBITDA
+    - `computed_from_financials`: 从财报手算EBITDA
+    - `stooq_fallback`: 没有基本面数据,仅价格
+
+    **如果某只股票连续多天Stooq fallback**,说明Yahoo彻底ban了它,需要换数据源(考虑Financial Modeling Prep $15/月)。
+    """)
+
 # ===== 多模型一致性表 =====
 if not multi_val_df.empty:
     multi_val_sorted = multi_val_df.sort_values('consensus_score', ascending=False, na_position='last').copy()

@@ -16,6 +16,7 @@ def fetch_stock_data(ticker: str) -> dict:
     """
     获取单只股票数据
     优先Yahoo Finance,失败则降级到Stooq(仅价格和均线)
+    P/B和EV/EBITDA: 三层fallback - info直读 → 手算 → None
     """
     base = {
         'ticker': ticker,
@@ -54,6 +55,49 @@ def fetch_stock_data(ticker: str) -> dict:
         mcap = info.get('marketCap')
         fcf_yield = (fcf / mcap) if (fcf and mcap and mcap > 0) else None
 
+        # ===== P/B 三层fallback =====
+        pb = info.get('priceToBook')
+        pb_source = 'info' if pb else None
+        if not pb or pb <= 0:
+            # 手算: P/B = 价格 / 每股账面价值
+            book_value = info.get('bookValue')  # 每股账面价值
+            if book_value and book_value > 0 and price:
+                pb = price / book_value
+                pb_source = 'computed_from_bookvalue'
+            else:
+                # 再试: 市值 / 股东权益
+                try:
+                    bs = tk.balance_sheet
+                    if not bs.empty and 'Stockholders Equity' in bs.index:
+                        equity = float(bs.loc['Stockholders Equity'].iloc[0])
+                        if equity > 0 and mcap:
+                            pb = mcap / equity
+                            pb_source = 'computed_from_balancesheet'
+                except Exception:
+                    pass
+
+        # ===== EV/EBITDA 三层fallback =====
+        ev_ebitda = info.get('enterpriseToEbitda')
+        ev_source = 'info' if ev_ebitda else None
+        if not ev_ebitda or ev_ebitda <= 0:
+            # 手算: EV / EBITDA
+            ev = info.get('enterpriseValue')
+            ebitda = info.get('ebitda')
+            if ev and ebitda and ebitda > 0:
+                ev_ebitda = ev / ebitda
+                ev_source = 'computed_from_components'
+            else:
+                # 最后尝试从income statement算EBITDA
+                try:
+                    fin = tk.financials
+                    if not fin.empty and 'EBITDA' in fin.index and ev:
+                        ebitda_calc = float(fin.loc['EBITDA'].iloc[0])
+                        if ebitda_calc > 0:
+                            ev_ebitda = ev / ebitda_calc
+                            ev_source = 'computed_from_financials'
+                except Exception:
+                    pass
+
         return {
             **base,
             'source': 'yahoo',
@@ -72,13 +116,17 @@ def fetch_stock_data(ticker: str) -> dict:
             'ma50': ma50,
             'ma200': ma200,
             'company_name': info.get('longName') or info.get('shortName'),
-            # 多模型估值新增字段
-            'price_to_book': info.get('priceToBook'),
-            'ev_to_ebitda': info.get('enterpriseToEbitda'),
+            # 多模型估值字段(带数据源诊断)
+            'price_to_book': pb,
+            'pb_source': pb_source,
+            'ev_to_ebitda': ev_ebitda,
+            'ev_ebitda_source': ev_source,
             'enterprise_value': info.get('enterpriseValue'),
             'operating_cashflow': info.get('operatingCashflow'),
             'capex': info.get('capitalExpenditures'),
             'beta': info.get('beta'),
+            'book_value_per_share': info.get('bookValue'),
+            'ebitda': info.get('ebitda'),
         }
 
     except Exception as e:
@@ -110,12 +158,16 @@ def fetch_stock_data(ticker: str) -> dict:
                     'ps_ratio': None,
                     'fcf_yield': None,
                     'price_to_book': None,
+                    'pb_source': None,
                     'ev_to_ebitda': None,
+                    'ev_ebitda_source': None,
                     'enterprise_value': None,
                     'operating_cashflow': None,
                     'capex': None,
                     'beta': None,
-                    'error': f"Yahoo失败,Stooq价格fallback",
+                    'book_value_per_share': None,
+                    'ebitda': None,
+                    'error': f"Yahoo失败,Stooq价格fallback (基本面数据不可用)",
                 }
         except Exception:
             pass
